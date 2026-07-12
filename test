@@ -1,0 +1,278 @@
+// const express = require("express");
+// const cors = require("cors");
+// const multer = require("multer");
+// const fs = require("fs-extra");
+// const path = require("path");
+
+// const { sql, pool, poolConnect } = require("./db");
+
+// const app = express();
+
+// app.use(cors());
+
+// app.use(express.json());
+
+// const upload = multer({
+//     storage: multer.memoryStorage(),
+//     limits: {
+//         fileSize: 100 * 1024 * 1024
+//     }
+// });
+
+// app.post("/upload", upload.single("file"), async (req, res) => {
+
+//     let transaction;
+
+//     try {
+
+//         await poolConnect;
+
+//         if (!req.file) {
+
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "No file selected"
+//             });
+
+//         }
+
+//         transaction = new sql.Transaction(pool);
+
+//         await transaction.begin();
+
+//         const request = new sql.Request(transaction);
+
+//         const configResult = await request.query(`
+//         SELECT TOP 1
+//             Id,
+//             FolderPath,
+//             Prefix,
+//             SequenceNo
+//         FROM FolderConfiguration
+//         `);
+
+//         if (configResult.recordset.length == 0) {
+
+//             await transaction.rollback();
+
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "Folder configuration not found"
+//             });
+
+//         }
+
+//         const config = configResult.recordset[0];
+
+//        const folderPath = config.FolderPath;
+
+//       //const folderPath = "C:\\Users\\ravi\\Desktop\\New folder";
+      
+//         const prefix = config.Prefix;
+
+//         const sequenceNo = config.SequenceNo;
+
+//         const extension = path.extname(req.file.originalname);
+
+//         const originalWithoutExt = path.basename(
+//             req.file.originalname,
+//             extension
+//         );
+
+//         const generatedFileName =
+//             `${prefix}_${String(sequenceNo).padStart(4, "0")}_${originalWithoutExt}${extension}`;
+
+//         await fs.ensureDir(folderPath);
+
+//         const fullPath = path.join(folderPath, generatedFileName);
+
+//         await fs.writeFile(fullPath, req.file.buffer);
+
+//         await new sql.Request(transaction)
+//             .input("id", sql.Int, config.Id)
+//             .query(`
+//             UPDATE FolderConfiguration
+//             SET SequenceNo = SequenceNo + 1
+//             WHERE Id=@id
+//             `);
+
+//         await new sql.Request(transaction)
+//             .input("original", sql.NVarChar, req.file.originalname)
+//             .input("saved", sql.NVarChar, generatedFileName)
+//             .input("filepath", sql.NVarChar, fullPath)
+//             .query(`
+//             INSERT INTO UploadedFiles
+//             (
+//                 OriginalFileName,
+//                 SavedFileName,
+//                 FilePath
+//             )
+//             VALUES
+//             (
+//                 @original,
+//                 @saved,
+//                 @filepath
+//             )
+//             `);
+
+//         await transaction.commit();
+
+//         res.json({
+
+//             success: true,
+
+//             message: "Uploaded Successfully",
+
+//             originalFile: req.file.originalname,
+
+//             savedFile: generatedFileName,
+
+//             folder: folderPath,
+
+//             fullPath
+
+//         });
+
+//     }
+
+//     catch (err) {
+
+//         console.log(err);
+
+//         if (transaction) {
+
+//             try {
+
+//                 await transaction.rollback();
+
+//             }
+
+//             catch (e) {
+
+//             }
+
+//         }
+
+//         res.status(500).json({
+
+//             success: false,
+
+//             message: err.message
+
+//         });
+
+//     }
+
+// });
+
+// const PORT = 5000;
+
+// app.listen(PORT, () => {
+
+//     console.log(`Server Running on ${PORT}`);
+
+// });
+
+const express = require("express");
+const cors = require("cors");
+const multer = require("multer");
+const fs = require("fs-extra");
+const path = require("path");
+
+// const { sql, pool, poolConnect } = require("./db");
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 100 * 1024 * 1024
+    }
+});
+
+app.post("/upload", upload.single("file"), async (req, res) => {
+
+    try {
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "No file selected"
+            });
+        }
+
+        // ==============================
+        // Hardcoded folder path
+        // ==============================
+        const folderPath = "C:\\Users\\ravi\\Desktop\\Uploads";
+
+        const prefix = "FILE";
+        const sequenceNo = 1;
+
+        const extension = path.extname(req.file.originalname);
+
+        const originalWithoutExt = path.basename(
+            req.file.originalname,
+            extension
+        );
+
+        const generatedFileName =
+            `${prefix}_${String(sequenceNo).padStart(2, "0")}_${originalWithoutExt}${extension}`;
+
+        await fs.ensureDir(folderPath);
+
+        const fullPath = path.join(folderPath, generatedFileName);
+
+        await fs.writeFile(fullPath, req.file.buffer);
+
+        // ==============================
+        // Database code disabled
+        // ==============================
+
+        /*
+        await poolConnect;
+
+        const transaction = new sql.Transaction(pool);
+
+        await transaction.begin();
+
+        // SELECT FolderConfiguration
+
+        // UPDATE SequenceNo
+
+        // INSERT UploadedFiles
+
+        await transaction.commit();
+        */
+
+        res.json({
+            success: true,
+            message: "Uploaded Successfully",
+            originalFile: req.file.originalname,
+            savedFile: generatedFileName,
+            folder: folderPath,
+            fullPath
+        });
+
+    }
+    catch (err) {
+
+        console.log(err);
+
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
+
+    }
+
+});
+
+const PORT = 5000;
+
+app.listen(PORT, () => {
+    console.log(`Server Running on ${PORT}`);
+});

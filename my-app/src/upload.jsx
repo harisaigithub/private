@@ -1,21 +1,38 @@
 import React, { useState } from "react";
 import axios from "axios";
+import "./Upload.css";
+import {
+    FaCloudUploadAlt,
+    FaFileAlt,
+    FaSignOutAlt,
+    FaUserCircle
+} from "react-icons/fa";
 
 const Upload = () => {
 
     const [selectedFile, setSelectedFile] = useState(null);
-
     const [uploading, setUploading] = useState(false);
-
     const [progress, setProgress] = useState(0);
-
     const [message, setMessage] = useState("");
+    const [error, setError] = useState("");
+
+    const userId = localStorage.getItem("userId");
+
+    const logout = () => {
+
+        localStorage.removeItem("userId");
+
+        window.location.href = "/";
+
+    };
 
     const handleFileChange = (e) => {
 
         setSelectedFile(e.target.files[0]);
 
         setMessage("");
+
+        setError("");
 
         setProgress(0);
 
@@ -25,7 +42,7 @@ const Upload = () => {
 
         if (!selectedFile) {
 
-            alert("Please Select File");
+            setError("Please select a file.");
 
             return;
 
@@ -35,33 +52,49 @@ const Upload = () => {
 
         formData.append("file", selectedFile);
 
+        formData.append("userId", userId);
+
         try {
 
             setUploading(true);
 
+            setMessage("");
+
+            setError("");
+
             const response = await axios.post(
+
                 "http://localhost:5000/upload",
+
                 formData,
+
                 {
+
                     headers: {
+
                         "Content-Type": "multipart/form-data"
+
                     },
 
                     onUploadProgress: (event) => {
 
                         const percent = Math.round(
+
                             (event.loaded * 100) / event.total
+
                         );
 
                         setProgress(percent);
 
                     }
+
                 }
+
             );
 
-            setMessage(response.data.message);
-
-            alert("Uploaded Successfully");
+            setMessage(
+                `${response.data.savedFile} uploaded successfully.`
+            );
 
             setSelectedFile(null);
 
@@ -71,17 +104,15 @@ const Upload = () => {
 
         catch (err) {
 
-            console.log(err);
-
             if (err.response) {
 
-                alert(err.response.data.message);
+                setError(err.response.data.message);
 
             }
 
             else {
 
-                alert("Upload Failed");
+                setError("Upload Failed");
 
             }
 
@@ -97,118 +128,214 @@ const Upload = () => {
 
     return (
 
-        <div
-            style={{
-                width: "500px",
-                margin: "80px auto",
-                padding: "30px",
-                border: "1px solid gray",
-                borderRadius: "10px"
-            }}
-        >
+        <div className="upload-container">
 
-            <h2>Document Upload</h2>
+            <div className="header">
 
-            <br />
+                <div>
 
-            <input
-                id="fileInput"
-                type="file"
-                onChange={handleFileChange}
-            />
+                    <h2>Employee Document Upload</h2>
 
-            <br /><br />
+                    <div className="user">
 
-            {
+                        <FaUserCircle />
 
-                selectedFile && (
+                        &nbsp;
 
-                    <div>
+                        Logged in User :
 
-                        <b>Selected File :</b>
+                        <b>
+
+                            {userId}
+
+                        </b>
+
+                    </div>
+
+                </div>
+
+                <button
+                    className="logout-btn"
+                    onClick={logout}
+                >
+
+                    <FaSignOutAlt />
+
+                    &nbsp;
+
+                    Logout
+
+                </button>
+
+            </div>
+
+            <div className="content">
+
+                <label
+                    htmlFor="fileInput"
+                    className="upload-box"
+                >
+
+                    <FaCloudUploadAlt
+                        size={70}
+                        color="#1f4e79"
+                    />
+
+                    <h3>
+
+                        Click to Select Document
+
+                    </h3>
+
+                    <p>
+    Drag & Drop your document here
+</p>
+
+<p style={{marginTop:"8px"}}>
+    or click anywhere inside this box
+</p>
+
+<p style={{marginTop:"12px",color:"#888"}}>
+    Supported Files • Maximum Size 100 MB
+</p>
+
+                    <input
+                        id="fileInput"
+                        type="file"
+                        hidden
+                        onChange={handleFileChange}
+                    />
+
+                </label>
+
+                {
+
+                    selectedFile &&
+
+                   <div className="file-name">
+
+    <h3 style={{marginBottom:"10px"}}>
+        📄 Selected File
+    </h3>
+
+                        <FaFileAlt />
+
+                        &nbsp;
+
+                        <strong>
+
+                            Selected File :
+
+                        </strong>
 
                         <br />
 
                         {selectedFile.name}
 
-                        <br /><br />
-
                     </div>
 
-                )
+                }
 
-            }
+                {
 
-            {
+                    uploading &&
 
-                uploading && (
+                    <div className="progress">
 
-                    <div>
+                        <h4>
 
-                        Uploading...
+                            Uploading...
+
+                        </h4>
 
                         <br />
 
                         {progress} %
 
-                        <br />
+                        <br /><br />
 
                         <progress
                             value={progress}
                             max="100"
-                            style={{
-                                width: "100%"
-                            }}
                         />
 
                     </div>
 
-                )
+                }
 
-            }
+                <button
 
-            <br />
+                    className="upload-btn"
 
-            <button
+                    onClick={uploadFile}
 
-                onClick={uploadFile}
+                    disabled={uploading}
 
-                disabled={uploading}
+                >
 
-                style={{
-                    padding: "10px 20px",
-                    cursor: "pointer"
-                }}
+                    {
 
-            >
+                        uploading
+
+                            ?
+
+                            "Uploading..."
+
+                            :
+
+                            "Upload Document"
+
+                    }
+
+                </button>
 
                 {
 
-                    uploading
+                    message &&
 
-                        ? "Uploading..."
+                    <div className="success">
 
-                        : "Upload"
+                        <strong>
 
-                }
+                            ✓ Upload Successful
 
-            </button>
+                        </strong>
 
-            <br /><br />
-
-            {
-
-                message && (
-
-                    <h3 style={{ color: "green" }}>
+                        <br /><br />
 
                         {message}
 
-                    </h3>
+                    </div>
 
-                )
+                }
 
-            }
+                {
+
+                    error &&
+
+                    <div className="error">
+
+                        <strong>
+
+                            ✖ Upload Failed
+
+                        </strong>
+
+                        <br /><br />
+
+                        {error}
+
+                    </div>
+
+                }
+
+                <div className="footer">
+
+                    Employee Management System (EMS)
+
+                </div>
+
+            </div>
 
         </div>
 

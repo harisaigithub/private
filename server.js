@@ -3,13 +3,13 @@ const cors = require("cors");
 const multer = require("multer");
 const fs = require("fs-extra");
 const path = require("path");
+const bcrypt = require("bcrypt");
 
 const { sql, pool, poolConnect } = require("./db");
 
 const app = express();
 
 app.use(cors());
-
 app.use(express.json());
 
 const upload = multer({
@@ -27,6 +27,17 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
         await poolConnect;
 
+        const userId = req.body.userId;
+
+        if (!userId) {
+
+            return res.status(400).json({
+                success: false,
+                message: "UserId is required"
+            });
+
+        }
+
         if (!req.file) {
 
             return res.status(400).json({
@@ -40,79 +51,81 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
         await transaction.begin();
 
-        const request = new sql.Request(transaction);
+        // Get Folder Path of Logged-in User
+        const configResult = await new sql.Request(transaction)
+            .input("userId", sql.NVarChar(50), userId)
+            .query(`
+                SELECT FolderPath
+                FROM FolderConfiguration
+                WHERE UserId = @userId
+            `);
 
-        const configResult = await request.query(`
-        SELECT TOP 1
-            Id,
-            FolderPath,
-            Prefix,
-            SequenceNo
-        FROM FolderConfiguration
-        `);
-
-        if (configResult.recordset.length == 0) {
+        if (configResult.recordset.length === 0) {
 
             await transaction.rollback();
 
             return res.status(404).json({
                 success: false,
-                message: "Folder configuration not found"
+                message: "Folder configuration not found for this user."
             });
 
         }
 
-        const config = configResult.recordset[0];
+        const folderPath = configResult.recordset[0].FolderPath;
 
-      //  const folderPath = config.FolderPath;
+        // Get Next Sequence Number for this User
+        const sequenceResult = await new sql.Request(transaction)
+            .input("userId", sql.NVarChar(50), userId)
+            .query(`
+                SELECT ISNULL(MAX(SequenceNo),0) AS LastSequence
+                FROM UploadedFiles
+                WHERE UserId = @userId
+            `);
 
-      const folderPath = "C:\\Users\\ravi\\Desktop\\New folder";
-      
-        const prefix = config.Prefix;
+        const sequenceNo =
+            sequenceResult.recordset[0].LastSequence + 1;
 
-        const sequenceNo = config.SequenceNo;
+        const prefix = "FILE";
 
         const extension = path.extname(req.file.originalname);
 
-        const originalWithoutExt = path.basename(
-            req.file.originalname,
-            extension
-        );
+        const originalWithoutExt =
+            path.basename(req.file.originalname, extension);
 
         const generatedFileName =
-            `${prefix}_${String(sequenceNo).padStart(4, "0")}_${originalWithoutExt}${extension}`;
+            `${prefix}_${String(sequenceNo).padStart(2, "0")}_${originalWithoutExt}${extension}`;
 
         await fs.ensureDir(folderPath);
 
-        const fullPath = path.join(folderPath, generatedFileName);
+        const fullPath =
+            path.join(folderPath, generatedFileName);
 
         await fs.writeFile(fullPath, req.file.buffer);
 
+        // Save Upload History
         await new sql.Request(transaction)
-            .input("id", sql.Int, config.Id)
+            .input("userId", sql.NVarChar(50), userId)
+            .input("sequence", sql.Int, sequenceNo)
+            .input("original", sql.NVarChar(255), req.file.originalname)
+            .input("saved", sql.NVarChar(255), generatedFileName)
+            .input("filepath", sql.NVarChar(500), fullPath)
             .query(`
-            UPDATE FolderConfiguration
-            SET SequenceNo = SequenceNo + 1
-            WHERE Id=@id
-            `);
-
-        await new sql.Request(transaction)
-            .input("original", sql.NVarChar, req.file.originalname)
-            .input("saved", sql.NVarChar, generatedFileName)
-            .input("filepath", sql.NVarChar, fullPath)
-            .query(`
-            INSERT INTO UploadedFiles
-            (
-                OriginalFileName,
-                SavedFileName,
-                FilePath
-            )
-            VALUES
-            (
-                @original,
-                @saved,
-                @filepath
-            )
+                INSERT INTO UploadedFiles
+                (
+                    UserId,
+                    SequenceNo,
+                    OriginalFileName,
+                    SavedFileName,
+                    FilePath
+                )
+                VALUES
+                (
+                    @userId,
+                    @sequence,
+                    @original,
+                    @saved,
+                    @filepath
+                )
             `);
 
         await transaction.commit();
@@ -122,6 +135,10 @@ app.post("/upload", upload.single("file"), async (req, res) => {
             success: true,
 
             message: "Uploaded Successfully",
+
+            userId,
+
+            sequenceNo,
 
             originalFile: req.file.originalname,
 
@@ -134,10 +151,9 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         });
 
     }
-
     catch (err) {
 
-        console.log(err);
+        console.error(err);
 
         if (transaction) {
 
@@ -146,8 +162,9 @@ app.post("/upload", upload.single("file"), async (req, res) => {
                 await transaction.rollback();
 
             }
-
             catch (e) {
+
+                console.error(e);
 
             }
 
@@ -165,10 +182,76 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
 });
 
+app.post("/login", async (req, res) => {
+
+    try {
+
+        await poolConnect;
+        console.log(req.body)
+
+        const { staffNo, password } = req.body;
+
+        const result = await pool.request()
+            .input("staffNo", sql.NVarChar, staffNo)
+            .query(`
+                SELECT *
+                FROM LoginUsers
+                WHERE StaffNo=@staffNo
+            `);
+
+        console.log(result)
+        if (result.recordset.length === 0) {
+
+            return res.status(401).json({
+                success: false,
+                message: "Invalid Staff Number"
+            });
+
+        }
+
+        const user = result.recordset[0];
+
+        const ok = await bcrypt.compare(
+            password,
+            user.PasswordHash
+        );
+
+        if (!ok) {
+
+            return res.status(401).json({
+                success: false,
+                message: "Invalid Password"
+            });
+
+        }
+
+        res.json({
+
+            success: true,
+
+            userId: user.StaffNo,
+
+            userName: user.UserName
+
+        });
+
+    }
+    catch (err) {
+
+        res.status(500).json({
+
+            success: false,
+
+            message: err.message
+
+        });
+
+    }
+
+});
+
 const PORT = 5000;
 
 app.listen(PORT, () => {
-
     console.log(`Server Running on ${PORT}`);
-
 });
